@@ -23,6 +23,10 @@ public protocol AppleSigninProtocol: NSObjectProtocol {
 /// step1: use available() to check service available status
 /// step2: if available, then use request() start login
 public class AppleSignin: NSObject {
+    
+    public typealias DidComplete = (_ token: String, _ authCode: String, _ user: String) -> Void
+    public typealias DidError = (_ error: AppleSigninError) -> Void
+    
     override init() {
         super.init()
     }
@@ -30,6 +34,16 @@ public class AppleSignin: NSObject {
     public weak var delegate: AppleSigninProtocol?
     
     public static let shared = AppleSignin()
+    
+    private var didCompleteBlock: DidComplete?
+    public func didComplete(_ complete: DidComplete?) {
+        self.didCompleteBlock = complete
+    }
+    
+    private var didErrorBlock: DidError?
+    public func didError(_ error: DidError?) {
+        self.didErrorBlock = error
+    }
 }
 
 public extension AppleSignin {
@@ -41,7 +55,7 @@ public extension AppleSignin {
         return true
     }
     
-    func request(delegate: AppleSigninProtocol?) {
+    func request(delegate: AppleSigninProtocol? = nil) {
         guard #available(iOS 13.0, *) else {
             return
         }
@@ -54,7 +68,20 @@ public extension AppleSignin {
         authorizationController.performRequests()
     }
     
+    func request(didComplete: DidComplete?, didError: DidError?) {
+        self.didComplete(didComplete)
+        self.didError(didError)
+        
+        request(delegate: nil)
+    }
+    
+    func prepareForReuse() {
+        didErrorBlock = nil
+        didCompleteBlock = nil
+        delegate = nil
+    }
 }
+
 @available(iOS 13.0, *)
 extension AppleSignin: ASAuthorizationControllerPresentationContextProviding {
     
@@ -94,7 +121,11 @@ extension AppleSignin: ASAuthorizationControllerDelegate {
             return
         }
         
-        delegate?.appleSigninDidComplete(token: token, authCode: authCode, user: payloadUser)
+        if let didCompleteBlock = didCompleteBlock {
+            didCompleteBlock(token, authCode, payloadUser)
+        } else {
+            delegate?.appleSigninDidComplete(token: token, authCode: authCode, user: payloadUser)
+        }
     }
     
     public func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {
@@ -103,9 +134,17 @@ extension AppleSignin: ASAuthorizationControllerDelegate {
         
         switch authorizationError.code {
         case .canceled:
-            delegate?.appleSigninDidError(.canceled)
+            if let didErrorBlock = didErrorBlock {
+                didErrorBlock(.canceled)
+            } else {
+                delegate?.appleSigninDidError(.canceled)
+            }
         default:
-            delegate?.appleSigninDidError(.failed(error: error))
+            if let didErrorBlock = didErrorBlock {
+                didErrorBlock(.failed(error: error))
+            } else {
+                delegate?.appleSigninDidError(.failed(error: error))
+            }
         }
         
 //        switch authorizationError.code {
