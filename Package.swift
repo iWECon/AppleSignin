@@ -7,6 +7,7 @@ let package = Package(
     name: "AppleSignin",
     platforms: [
         .iOS(.v10),
+        .macOS(.v10_15)
     ],
     products: [
         .library(
